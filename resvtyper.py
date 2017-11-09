@@ -27,43 +27,43 @@ nondup_priors = np.array([1e-3, 0.5, 0.9], dtype='float128').reshape(1,3)
 def regenotype(writer, variant):
     if variant.INFO.get('SVTYPE') == 'DUP': # specialized logic to handle non-destructive events such as duplications
         p_alt = dup_priors
-    else:
-        p_alt = nondup_priors
+    #else:
+    #    p_alt = nondup_priors
 
-    ref = variant.format('QR', int)
-    alt = variant.format('QA', int)
+        ref = variant.format('QR', int)
+        alt = variant.format('QA', int)
 
-    # store which data have zero counts
-    # These look like they will progress through below as homozygous reference sites
-    no_data = np.logical_and(ref==0, alt==0).ravel()
-    log_combo = log_choose(ref, alt)
+        # store which data have zero counts
+        # These look like they will progress through below as homozygous reference sites
+        no_data = np.logical_and(ref==0, alt==0).ravel()
+        log_combo = log_choose(ref, alt)
 
-    lk = log_combo + alt * np.log10(p_alt, dtype='float128') + ref * np.log10(1. - p_alt, dtype='float128') 
-    best_gt = lk.argmax(axis=1)
-    total_quals = np.logaddexp.reduce(lk * np.log(10., dtype='float128'), axis=1) * np.log10(np.e, dtype='float128')
-    second_best_gt = np.ma.array(lk, mask=False, dtype='float128')
-    second_best_gt.mask[np.arange(len(lk.argmax(axis=1))), lk.argmax(axis=1)] = True
-    genotype_quals = -10. * (second_best_gt.max(axis=1) - lk.max(axis=1))
-    sample_quals = -10. * (lk[:, 0] - total_quals)
-    variant_sample_quals = np.ma.array(sample_quals, mask=(np.logical_or(best_gt == 0, no_data)))
-    msq = np.mean(variant_sample_quals, dtype='float')
-    nsamp = np.count_nonzero(best_gt)
-    variant_qual = np.sum(sample_quals[~no_data]).round(2)
+        lk = log_combo + alt * np.log10(p_alt, dtype='float128') + ref * np.log10(1. - p_alt, dtype='float128') 
+        best_gt = lk.argmax(axis=1)
+        total_quals = np.logaddexp.reduce(lk * np.log(10., dtype='float128'), axis=1) * np.log10(np.e, dtype='float128')
+        second_best_gt = np.ma.array(lk, mask=False, dtype='float128')
+        second_best_gt.mask[np.arange(len(lk.argmax(axis=1))), lk.argmax(axis=1)] = True
+        genotype_quals = -10. * (second_best_gt.max(axis=1) - lk.max(axis=1))
+        sample_quals = -10. * (lk[:, 0] - total_quals)
+        variant_sample_quals = np.ma.array(sample_quals, mask=(np.logical_or(best_gt == 0, no_data)))
+        msq = np.mean(variant_sample_quals, dtype='float')
+        nsamp = np.count_nonzero(best_gt)
+        variant_qual = np.sum(sample_quals[~no_data]).round(2)
 
-    # Set sites with no data to null genotypes
-    # cyvcf2 doesn't provide a facility for setting null values so set to -1 below
-    best_gt[no_data] = -1
-    genotype_quals[no_data] = -1
-    sample_quals[no_data] = -1
-    variant.genotypes = genotype_strings[best_gt]
-    variant.set_format('GQ', genotype_quals.astype(np.int))
-    variant.set_format('SQ', sample_quals.astype(np.float64).round(2))
-    variant.set_format('GL', lk.round(0).astype(np.int))
-    variant.QUAL = variant_qual
-    if 'MSQ' in variant.INFO:
-        variant.INFO['MSQ'] = float(msq.round(2))
-    if 'NSAMP' in variant.INFO:
-        variant.INFO['NSAMP'] = nsamp
+        # Set sites with no data to null genotypes
+        # cyvcf2 doesn't provide a facility for setting null values so set to -1 below
+        best_gt[no_data] = -1
+        genotype_quals[no_data] = -1
+        sample_quals[no_data] = -1
+        variant.genotypes = genotype_strings[best_gt]
+        variant.set_format('GQ', genotype_quals.astype(np.int))
+        variant.set_format('SQ', sample_quals.astype(np.float64).round(2))
+        variant.set_format('GL', lk.round(0).astype(np.int))
+        variant.QUAL = variant_qual
+        if variant.INFO.get('MSQ') is not None:
+            variant.INFO['MSQ'] = float(msq.round(2))
+        if variant.INFO.get('NSAMP') is not None:
+            variant.INFO['NSAMP'] = nsamp
     writer.write_record(variant)
 
 @click.command()
